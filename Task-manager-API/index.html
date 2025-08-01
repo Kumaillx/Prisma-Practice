@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Task Manager WebSocket</title>
+</head>
+<body>
+  <h1>Task Updates</h1>
+  <div id="messages"></div>
+  <input type="text" id="messageInput" placeholder="Type a message...">
+  <button onclick="sendMessage()">Send</button>
+  <script>
+    const ws = new WebSocket('ws://localhost:3000');
+    const messagesDiv = document.getElementById('messages');
+    const messageInput = document.getElementById('messageInput');
+
+    ws.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      const p = document.createElement('p');
+      p.textContent = `${new Date().toLocaleString()} - ${data.type}: ${JSON.stringify(data.task || data.id || data.message)}`;
+      messagesDiv.appendChild(p);
+    };
+
+    ws.onerror = (error) => console.error('WebSocket error:', error);
+    ws.onclose = () => console.log('WebSocket closed at', new Date().toLocaleString());
+    ws.onopen = () => console.log('WebSocket connected at', new Date().toLocaleString());
+
+    function sendMessage() {
+      if (ws.readyState === WebSocket.OPEN && messageInput.value) {
+        ws.send(messageInput.value);
+        messageInput.value = ''; // Clear the input after sending
+      } else {
+        console.log('WebSocket is not open or input is empty');
+      }
+    }
+  </script>
+</body>
+</html>

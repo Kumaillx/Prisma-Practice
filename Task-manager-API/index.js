@@ -1,5 +1,6 @@
 const express = require('express');
 const { PrismaClient } = require('@prisma/client');
+const WebSocket = require('ws');
 require('dotenv').config();
 
 const app = express();
@@ -10,7 +11,6 @@ app.use(express.json());
 
 const main= async ()=>{
     const tasks= await prisma.task.findMany()
-
 }
 
 let res=main().then(()=>{console.log("connect");
@@ -34,6 +34,11 @@ app.post('/tasks', async (req, res) => {
         description,
         status: status || 'pending',
       },
+    });
+    wss.clients.forEach((client) => {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(JSON.stringify({ type: 'taskCreated', task }));
+      }
     });
     res.status(201).json(task);
   } catch (error) {
@@ -76,6 +81,12 @@ app.put('/tasks/:id', async (req, res) => {
       where: { id: parseInt(id) },
       data: { title, description, status },
     });
+
+    wss.clients.forEach((client) => {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(JSON.stringify({ type: 'taskUpdated', task }));
+      }
+    });
     res.json(task);
   } catch (error) {
     res.status(500).json({ error: 'Error updating task' });
@@ -89,16 +100,45 @@ app.delete('/tasks/:id', async (req, res) => {
     await prisma.task.delete({
       where: { id: parseInt(id) },
     });
+    wss.clients.forEach((client) => {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(JSON.stringify({ type: 'taskDeleted', id: parseInt(id) }));
+      }
+    });
     res.status(204).send();
   } catch (error) {
     res.status(500).json({ error: 'Error deleting task' });
   }
 });
 
+
 // Start the server
-app.listen(PORT, () => {
+const server= app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
 });
+
+
+//server when it is being implemented on the web
+const wss = new WebSocket.Server({ server });
+
+wss.on('connection', (ws) => {
+  console.log('New WebSocket client connected');
+  ws.on('message', (message) => {
+    console.log(`Received from client: ${message}`);
+    // Echo the message back to the client that sent it
+    ws.send(JSON.stringify({ type: 'serverResponse', message: `Echo: ${message}` }));
+    // Optionally broadcast to all clients
+    wss.clients.forEach((client) => {
+      if (client.readyState === WebSocket.OPEN && client !== ws) {
+        client.send(JSON.stringify({ type: 'broadcast', message: `User said: ${message}` }));
+      }
+    });
+  });
+  ws.on('close', () => {
+    console.log('WebSocket client disconnected');
+  });
+});
+
 
 // Graceful shutdown
 process.on('SIGTERM', async () => {
